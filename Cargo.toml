@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+log = "0.4.21"
 jni = "0.21.1"
+android_logger = "0.13"
 mines = { path = "../mines"}
+jni_macro = { path = "jni_macro" }
 
 [lib]
 name = "mm"
@@ -17,3 +20,11 @@ lto = true
 panic = "abort"
 opt-level = "z"
 codegen-units = 1
+
+[workspace]
+members = [
+  "jni_macro",
+]
+exclude = [
+  "test"
+]
