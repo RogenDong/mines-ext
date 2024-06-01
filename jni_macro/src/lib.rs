@@ -13,8 +13,11 @@ use syn::{spanned::Spanned, Item};
 pub fn jni(attr: TokenStream, body: TokenStream) -> TokenStream {
     let ii = syn::parse::<syn::Item>(body.clone()).expect("转换 Item 失败");
     match ii {
-        Item::Mod(mm) => jni::proc_mod(attr, mm),
         Item::Fn(ff) => jni::proc_fun(attr, ff),
+        Item::Mod(mm) => match jni::proc_mod(attr, mm) {
+            Some(ts) => ts,
+            _ => body,
+        }
         _ => quote_spanned! {
             ii.span() => compile_error!("过程宏 jni 仅作用于函数(fn)与模块(mod)")
         }
