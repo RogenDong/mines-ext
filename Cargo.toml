@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 log = "0.4.21"
 jni = "0.21.1"
-android_logger = "0.13"
+android-logd-logger = "0.4.3"
 mines = { path = "../mines"}
 jni_macro = { path = "jni_macro" }
 
