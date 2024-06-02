@@ -7,7 +7,8 @@ edition = "2021"
 log = "0.4.21"
 jni = "0.21.1"
 android-logd-logger = "0.4.3"
-mines = { path = "../mines"}
+# mines = { path = "../mines" }
+mines = { git = "https://github.com/RogenDong/mines-rs.git" }
 jni_macro = { path = "jni_macro" }
 
 [lib]
