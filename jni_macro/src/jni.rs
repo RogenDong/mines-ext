@@ -3,13 +3,8 @@ use std::convert::TryFrom;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 use syn::{
-    parse, parse_quote, spanned::Spanned, Abi, Item, ItemFn, ItemMod, Lit, LitStr, Meta, Token,
-    Visibility,
+    parse_quote, spanned::Spanned, Abi, Item, ItemFn, ItemMod, Lit, LitStr, Meta, Token, Visibility,
 };
-
-const JAVA: &str = "Java";
-const IDENT_ATTR: &str = "jni";
-const IDENT_CRATE: &str = "jni_macro";
 
 /// 解析获得 java path
 fn get_value(input: TokenStream) -> Option<String> {
@@ -23,71 +18,70 @@ fn get_value(input: TokenStream) -> Option<String> {
     None
 }
 
-pub struct ProcFn {
+/// 函数处理器
+struct FnProcessor {
     pub attr: TokenStream,
+    /// syn库的函数体结构
     pub body: ItemFn,
 }
-impl ProcFn {
+impl FnProcessor {
     pub fn new(attr: TokenStream, body: ItemFn) -> Self {
-        ProcFn { attr, body }
+        Self { attr, body }
     }
+    /// 将函数体结构转换为语法树
     pub fn collect(self) -> TokenStream {
         self.body.to_token_stream().into()
     }
 
+    /// 统一为函数添加 no_mangle 属性
     pub fn add_attributes(mut self) -> Self {
         // println!("add_attributes: quote: add [no_mangle]");
-        let body = self.body;
-        let body = TokenStream::from(quote! {
-            #[no_mangle]
-            #body
-        });
-        self.body = parse(body).unwrap();
+        self.body.attrs.push(parse_quote!(#[no_mangle]));
         self
     }
 
+    /// 统一设置函数访问性
+    /// - 公开访问
+    /// - 标准 C ABI约束
     pub fn set_visibility(mut self) -> Self {
         let body = &mut self.body;
 
         // println!("set_visibility: set vis");
-        body.vis = Visibility::Public(Token![pub](body.vis.span()));
+        if !matches!(body.vis, Visibility::Public(_)) {
+            body.vis = Visibility::Public(Token![pub](body.vis.span()));
+        }
 
         // println!("set_visibility: set abi");
+        // 设置 C ABI约束
         let abi_span = body.sig.abi.span();
         body.sig.abi = Some(Abi {
             extern_token: Token![extern](abi_span),
-            name: Some(LitStr::new("system", abi_span)),
+            name: Some(LitStr::new("C", abi_span)),
         });
-
-        // println!("set_visibility: update");
-        let body = TokenStream::from(quote! {
-            #body
-        });
-        self.body = parse(body).unwrap();
         self
     }
 
-    pub fn set_fn_name(mut self) -> Self {
-        let mut ls = Vec::with_capacity(4);
-        ls.push(JAVA.to_string());
+    /// 统一按 JNI标准修改函数命名
+    /// ### Java_my_package_name_JniWrapClass_fname
+    /// - 前缀 `Java_`
+    /// - 包名 `my_package_name_`
+    /// - 包装类 `JniWrapClass_`
+    /// - 函数名 `fname`
+    pub fn update_name(mut self) -> Self {
+        let mut name = String::with_capacity(32);
+        name.push_str("Java_");
         if let Some(value) = get_value(self.attr.clone()) {
             // println!("attr value: {value}");
             if !value.is_empty() {
-                ls.push(value.replace(".", "_"))
+                name.push_str(&value.replace(".", "_"));
+                name.push('_');
             }
         }
-        // println!("set_fn_name: collect {ls:?}");
-        {
-            let id = &mut self.body.sig.ident;
-            ls.push(id.to_string());
-            // println!("set_fn_name: update");
-            *id = syn::Ident::new(&ls.join("_"), id.span());
-        }
-        let body = &self.body;
-        let body = TokenStream::from(quote! {
-            #body
-        });
-        self.body = parse(body).unwrap();
+        let id = &self.body.sig.ident;
+        name.push_str(&id.to_string());
+        // println!("set_fn_name: result {name}");
+        // println!("set_fn_name: update");
+        self.body.sig.ident = syn::Ident::new(&name, id.span());
         self
     }
 }
@@ -95,42 +89,50 @@ impl ProcFn {
 /// 处理函数上的 jni属性
 pub fn proc_fun(attr: TokenStream, body: ItemFn) -> TokenStream {
     // println!("----- fun {}", body.sig.ident.to_string());
-    ProcFn::new(attr, body)
+    FnProcessor::new(attr, body)
         .add_attributes()
         .set_visibility()
-        .set_fn_name()
+        .update_name()
         .collect()
 }
 
+/// 检查Path是否指向本过程宏
 fn is_jni_path(attr_path: &syn::Path) -> bool {
     let mut is_jni = false;
+    let mut is_self = false;
     for pp in &attr_path.segments {
         let id = pp.ident.to_string();
-        is_jni = id == IDENT_ATTR;
-        if is_jni || id != IDENT_CRATE {
+        is_self = is_self || id == "jni_macro";
+        is_jni = id == "jni";
+        if is_jni && is_self {
             break;
         }
     }
     is_jni
 }
 
-/// 处理 mod上的 jni属性
-/// - 解析属性值，遇到不设值的情况退出不处理
-///
-pub fn proc_mod(attr: TokenStream, body: ItemMod) -> Option<TokenStream> {
+/// 处理 mod上的 jni属性，并应用到内部函数（不递归）
+/// 1. 解析属性值
+/// 2. 遇到不设值的情况退出不处理
+/// 3. 将属性值应用到所有设置了 jni属性的内部函数（不递归）
+pub fn proc_mod(attr: TokenStream, mut mm: ItemMod) -> Option<TokenStream> {
     // println!("===== mod {} =====", body.ident.to_string());
+    // 获取属性值。没有值则不做处理
     let Some(mut prefix) = get_value(attr) else {
         return None;
     };
-    let mut mm = body.clone();
+    // 获取内部代码。空模块不处理
     let Some((_, ls)) = &mut mm.content else {
         return None;
     };
+    // 迭代内部代码，找到函数，检查是否设置 jni属性，对其应用模组属性值
     let mut iter = ls.iter_mut();
     while let Some(item) = iter.next() {
         let Item::Fn(ff) = item else { continue };
+        // 找到 jni属性（过程宏）
         for aa in ff.attrs.iter_mut() {
             match &aa.meta {
+                // meta为 Path表示没设置值，此时直接套用本模块的 jni属性
                 Meta::Path(p) => {
                     if is_jni_path(&p) {
                         *aa = parse_quote! {
@@ -140,6 +142,7 @@ pub fn proc_mod(attr: TokenStream, body: ItemMod) -> Option<TokenStream> {
                         break;
                     }
                 }
+                // meta为 List表示有设置值，此时将模组属性与函数属性拼接
                 Meta::List(l) => {
                     if !l.path.is_ident("jni") {
                         continue;
@@ -148,6 +151,7 @@ pub fn proc_mod(attr: TokenStream, body: ItemMod) -> Option<TokenStream> {
                         continue;
                     };
                     let Lit::Str(s) = lit else { continue };
+                    // 拼接：mod.attr_fn.attr
                     prefix = format!("{}_{}", prefix, s.value());
                     *aa = parse_quote! {
                         #[jni_macro::jni(#prefix)]
