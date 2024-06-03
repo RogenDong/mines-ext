@@ -12,7 +12,7 @@ mines = { git = "https://github.com/RogenDong/mines-rs.git" }
 jni_macro = { path = "jni_macro" }
 
 [lib]
-name = "mm"
+name = "mmrs"
 # 编译类型 cdylib 指定为动态库
 crate-type = ["cdylib"]
 
