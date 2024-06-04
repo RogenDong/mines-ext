@@ -1,10 +1,13 @@
-use std::convert::TryFrom;
+use std::{convert::TryFrom, sync::Mutex};
 
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 use syn::{
     parse_quote, spanned::Spanned, Abi, Item, ItemFn, ItemMod, Lit, LitStr, Meta, Token, Visibility,
 };
+
+/// 环境变量中设置的 java限定名
+static ENV_JPATH: Mutex<String> = Mutex::new(String::new());
 
 /// 解析获得 java path
 fn get_value(input: TokenStream) -> Option<String> {
@@ -14,6 +17,21 @@ fn get_value(input: TokenStream) -> Option<String> {
             Ok(s) => return Some(s.value().to_string()),
             Err(e) => panic!("get java-class path fail ! {}", e),
         };
+    }
+    None
+}
+
+/// 从环境变量获取 java path
+fn get_env_jpath() -> Option<String> {
+    println!("get_env_jpath:");
+    let mut env = ENV_JPATH.lock().unwrap();
+    if !env.is_empty() {
+        return Some(env.clone());
+    }
+    if let Ok(jpath) = std::env::var("JNI_JPATH") {
+        println!("cargo-env-var[JNI_JPATH]={jpath}");
+        env.push_str(&jpath);
+        return Some(jpath);
     }
     None
 }
@@ -56,7 +74,7 @@ impl FnProcessor {
         let abi_span = body.sig.abi.span();
         body.sig.abi = Some(Abi {
             extern_token: Token![extern](abi_span),
-            name: Some(LitStr::new("C", abi_span)),
+            name: Some(LitStr::new("system", abi_span)),
         });
         self
     }
@@ -112,13 +130,13 @@ fn is_jni_path(attr_path: &syn::Path) -> bool {
 }
 
 /// 处理 mod上的 jni属性，并应用到内部函数（不递归）
-/// 1. 解析属性值
-/// 2. 遇到不设值的情况退出不处理
+/// 1. 解析过程宏属性值
+/// 2. 遇到不设值的模块，尝试获取环境变量，仍无值则不处理次模块。
 /// 3. 将属性值应用到所有设置了 jni属性的内部函数（不递归）
 pub fn proc_mod(attr: TokenStream, mut mm: ItemMod) -> Option<TokenStream> {
+    // 获取属性值。或尝试从环境变量获取。
     // println!("===== mod {} =====", body.ident.to_string());
-    // 获取属性值。没有值则不做处理
-    let Some(mut prefix) = get_value(attr) else {
+    let Some(mut prefix) = get_value(attr).or_else(|| get_env_jpath()) else {
         return None;
     };
     // 获取内部代码。空模块不处理
