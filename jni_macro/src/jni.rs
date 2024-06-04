@@ -23,13 +23,13 @@ fn get_value(input: TokenStream) -> Option<String> {
 
 /// 从环境变量获取 java path
 fn get_env_jpath() -> Option<String> {
-    println!("get_env_jpath:");
+    // println!("get_env_jpath:");
     let mut env = ENV_JPATH.lock().unwrap();
     if !env.is_empty() {
         return Some(env.clone());
     }
     if let Ok(jpath) = std::env::var("JNI_JPATH") {
-        println!("cargo-env-var[JNI_JPATH]={jpath}");
+        // println!("cargo-env-var[JNI_JPATH]={jpath}");
         env.push_str(&jpath);
         return Some(jpath);
     }
