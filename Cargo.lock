@@ -189,7 +189,7 @@ checksum = "6c8640c5d730cb13ebd907d8d04b52f55ac9a2eec55b440c8892f40d56c76c1d"
 [[package]]
 name = "mines"
 version = "0.1.0"
-source = "git+https://github.com/RogenDong/mines-rs.git#1bb80fe0f717890c623566581480971e7b783f55"
+source = "git+https://github.com/RogenDong/mines-rs.git#2d16c6024c3628f016917615daafb21f6a77fa11"
 dependencies = [
  "rand",
  "smallvec",

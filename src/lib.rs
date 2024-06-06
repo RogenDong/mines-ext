@@ -4,7 +4,7 @@
 mod game {
 
     use std::sync::Mutex;
-    
+
     use jni::{
         objects::JObject,
         sys::{jboolean, jbyteArray, jint, jstring, JNI_FALSE, JNI_TRUE},
@@ -14,9 +14,9 @@ mod game {
     use mines::{location::Loc, mmap::MineMap};
 
     const MSG_GET_MAP_FAIL: &str = "地图数据异常！";
-    
+
     static MM: Mutex<Option<MineMap>> = Mutex::new(None);
-    
+
     /// 初始化日志
     fn log_init() {
         let logger = android_logd_logger::builder()
@@ -24,13 +24,13 @@ mod game {
             .tag("jni-log-init")
             .prepend_module(true)
             .init();
-    
+
         trace!("trace message");
         debug!("debug message");
         info!("info message");
         warn!("warn message");
         error!("error message");
-    
+
         logger.tag("mines-jni");
     }
 
@@ -56,14 +56,14 @@ mod game {
             mm.new_game(Some(Loc(x as u8, y as u8)))
         }
     }
-    
+
     #[jni]
     fn resetProgress(_: JNIEnv, _: JObject) {
         let mut mm = MM.lock().expect(MSG_GET_MAP_FAIL);
         let mm = mm.as_mut().expect(MSG_GET_MAP_FAIL);
         mm.reset_progress()
     }
-    
+
     #[jni]
     fn switchFlag(_: JNIEnv, _: JObject, x: jint, y: jint) {
         if x < 0 || y < 0 {
@@ -74,7 +74,7 @@ mod game {
         let mm = mm.as_mut().expect(MSG_GET_MAP_FAIL);
         mm.switch_flag(x as usize, y as usize)
     }
-    
+
     #[jni]
     fn reveal(_: JNIEnv, _: JObject, x: jint, y: jint) -> jint {
         if x < 0 || y < 0 {
@@ -85,7 +85,7 @@ mod game {
         let mm = mm.as_mut().expect(MSG_GET_MAP_FAIL);
         mm.reveal(x as usize, y as usize) as jint
     }
-    
+
     #[jni]
     fn revealAround(_: JNIEnv, _: JObject, x: jint, y: jint) -> jint {
         if x < 0 || y < 0 {
@@ -96,14 +96,25 @@ mod game {
         let mm = mm.as_mut().expect(MSG_GET_MAP_FAIL);
         mm.reveal_around(x as usize, y as usize) as jint
     }
-    
+
+    #[jni]
+    fn countFlaggedAround(_: JNIEnv, _: JObject, x: jint, y: jint) -> jint {
+        if x < 0 || y < 0 {
+            warn!("无效坐标：({x},{y})");
+            return 0;
+        }
+        let mm = MM.lock().expect(MSG_GET_MAP_FAIL);
+        let mm = mm.as_ref().expect(MSG_GET_MAP_FAIL);
+        mm.count_flagged_around(x as usize, y as usize) as jint
+    }
+
     #[jni]
     fn revealAllMines(_: JNIEnv, _: JObject) {
         let mut mm = MM.lock().expect(MSG_GET_MAP_FAIL);
         let mm = mm.as_mut().expect(MSG_GET_MAP_FAIL);
         mm.reveal_all_mines()
     }
-    
+
     #[jni]
     fn isAllReveal(_: JNIEnv, _: JObject) -> jboolean {
         let mut mm = MM.lock().expect(MSG_GET_MAP_FAIL);
@@ -114,14 +125,28 @@ mod game {
             JNI_FALSE
         }
     }
-    
+
+    #[jni]
+    fn countFlagged(_: JNIEnv, _: JObject) -> jint {
+        let mm = MM.lock().expect(MSG_GET_MAP_FAIL);
+        let mm = mm.as_ref().expect(MSG_GET_MAP_FAIL);
+        mm.count_flagged() as jint
+    }
+
     #[jni]
     fn formatString(env: JNIEnv, _: JObject) -> jstring {
         let mut mm = MM.lock().expect(MSG_GET_MAP_FAIL);
         let mm = mm.as_mut().expect(MSG_GET_MAP_FAIL);
         env.new_string(mm.format_str()).unwrap().into_raw()
     }
-    
+
+    #[jni]
+    fn formatStatusString(env: JNIEnv, _: JObject) -> jstring {
+        let mut mm = MM.lock().expect(MSG_GET_MAP_FAIL);
+        let mm = mm.as_mut().expect(MSG_GET_MAP_FAIL);
+        env.new_string(mm.format_stat_str()).unwrap().into_raw()
+    }
+
     /// 导出布局数据
     /// # Argument
     /// - `hold_stat` 是否保留状态
