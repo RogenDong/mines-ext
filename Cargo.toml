@@ -7,9 +7,23 @@ edition = "2021"
 log = "0.4.21"
 jni = "0.21.1"
 android-logd-logger = "0.4.3"
-# mines = { path = "../mines" }
-mines = { git = "https://github.com/RogenDong/mines-rs.git" }
+mines = { path = "../mines" }
+# mines = { git = "https://github.com/RogenDong/mines-rs.git" }
 jni_macro = { path = "jni_macro" }
+time = "0.3.14"
+
+# log tracing
+tracing = { path = "../tracing/tracing" }
+tracing-error = { path = "../tracing/tracing-error" }
+tracing-appender = { path = "../tracing/tracing-appender" }
+
+[dependencies.tracing-subscriber]
+path = "../tracing/tracing-subscriber"
+features = [
+    "fmt",
+    "local-time",
+    "time",
+]
 
 [lib]
 name = "mmrs"

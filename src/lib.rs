@@ -1,5 +1,7 @@
 // pub use game::*;
 
+mod tracing_rs;
+
 #[jni_macro::jni]
 mod game {
 
@@ -12,13 +14,16 @@ mod game {
     };
     use log::{debug, error, info, trace, warn};
     use mines::{location::Loc, mmap::MineMap};
+    use tracing_appender::non_blocking::WorkerGuard;
 
     const MSG_GET_MAP_FAIL: &str = "地图数据异常！";
 
     static MM: Mutex<Option<MineMap>> = Mutex::new(None);
+    static TL: Mutex<Option<WorkerGuard>> = Mutex::new(None);
 
     /// 初始化日志
-    fn log_init() {
+    #[jni]
+    fn initLogger(_: JNIEnv, _: JObject) -> jboolean {
         let logger = android_logd_logger::builder()
             .parse_filters("debug")
             .tag("jni-log-init")
@@ -31,12 +36,22 @@ mod game {
         warn!("warn message");
         error!("error message");
 
+        // let ok = match env.get_string(&dir) {
+        //     Ok(d) => {
+        //     }
+        //     Err(e) => {
+        //         error!("get jni string fail! {e:#?}");
+        //         JNI_FALSE
+        //     }
+        // };
+        *TL.lock().unwrap() = Some(crate::tracing_rs::init_tracing());
+
         logger.tag("mines-jni");
+        JNI_TRUE
     }
 
     #[jni]
     fn init(_: JNIEnv, _: JObject, count: jint, width: jint, height: jint) -> jboolean {
-        log_init();
         let Ok(mm) = MineMap::new(count as u16, width as u8, height as u8) else {
             error!("{}", MSG_GET_MAP_FAIL);
             return JNI_FALSE;
