@@ -12,11 +12,11 @@ static ENV_JPATH: Mutex<String> = Mutex::new(String::new());
 /// 解析获得 java path
 fn get_value(input: TokenStream) -> Option<String> {
     // println!("jni_impl: get java-class path");
-    for token in input {
+    if let Some(token) = input.into_iter().next() {
         match litrs::StringLit::try_from(token) {
             Ok(s) => return Some(s.value().to_string()),
             Err(e) => panic!("get java-class path fail ! {}", e),
-        };
+        }
     }
     None
 }
@@ -31,9 +31,10 @@ fn get_env_jpath() -> Option<String> {
     if let Ok(jpath) = std::env::var("JNI_JPATH") {
         // println!("cargo-env-var[JNI_JPATH]={jpath}");
         env.push_str(&jpath);
-        return Some(jpath);
+        Some(jpath)
+    } else {
+        None
     }
-    None
 }
 
 /// 函数处理器
@@ -91,7 +92,7 @@ impl FnProcessor {
         if let Some(value) = get_value(self.attr.clone()) {
             // println!("attr value: {value}");
             if !value.is_empty() {
-                name.push_str(&value.replace(".", "_"));
+                name.push_str(&value.replace('.', "_"));
                 name.push('_');
             }
         }
@@ -136,25 +137,20 @@ fn is_jni_path(attr_path: &syn::Path) -> bool {
 pub fn proc_mod(attr: TokenStream, mut mm: ItemMod) -> Option<TokenStream> {
     // 获取属性值。或尝试从环境变量获取。
     // println!("===== mod {} =====", body.ident.to_string());
-    let Some(mut prefix) = get_value(attr).or_else(|| get_env_jpath()) else {
-        return None;
-    };
+    let mut prefix = get_value(attr).or_else(get_env_jpath)?;
     // 获取内部代码。空模块不处理
-    let Some((_, ls)) = &mut mm.content else {
-        return None;
-    };
+    let (_, ls) = mm.content.as_mut()?;
     // 迭代内部代码，找到函数，检查是否设置 jni属性，对其应用模组属性值
-    let mut iter = ls.iter_mut();
-    while let Some(item) = iter.next() {
+    for item in ls.iter_mut() {
         let Item::Fn(ff) = item else { continue };
         // 找到 jni属性（过程宏）
         for aa in ff.attrs.iter_mut() {
             match &aa.meta {
                 // meta为 Path表示没设置值，此时直接套用本模块的 jni属性
                 Meta::Path(p) => {
-                    if is_jni_path(&p) {
+                    if is_jni_path(p) {
                         *aa = parse_quote! {
-                            #[jni_macro::jni(#prefix)]
+                            #[jni(#prefix)]
                         };
                         // println!("updated attr: {:#?}", aa);
                         break;
@@ -172,7 +168,7 @@ pub fn proc_mod(attr: TokenStream, mut mm: ItemMod) -> Option<TokenStream> {
                     // 拼接：mod.attr_fn.attr
                     prefix = format!("{}_{}", prefix, s.value());
                     *aa = parse_quote! {
-                        #[jni_macro::jni(#prefix)]
+                        #[jni(#prefix)]
                     };
                     break;
                 }
