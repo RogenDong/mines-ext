@@ -38,7 +38,7 @@ mod game {
         warn!("warn message");
         error!("error message");
 
-        logger.tag("mines-jni");
+        logger.tag("dylib-mines");
     }
 
     #[jni]
